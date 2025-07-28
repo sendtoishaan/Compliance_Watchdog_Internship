@@ -1,9 +1,39 @@
 import pytesseract
-from pdf2image import convert_from_path
-from PIL import Image
+import mimetypes
+import docx
 import re
+from pdf2image import convert_from_path
 from fuzzywuzzy import fuzz
-import os
+from PIL import Image
+
+
+# --------------- FILE-TYPE FUNCTIONS --------------- #
+
+# Reads .txt files
+def READ_TEXT_FILE(TEXT_PATH):
+    with open(TEXT_PATH, "r", encoding="utf-8") as file:
+        return file.read()
+
+# Reads a .docx Word files
+def READ_DOCX_FILE(DOCX_PATH):
+    DOC = docx.Document(DOCX_PATH)
+    return "\n".join([paragraph.text for paragraph in DOC.paragraphs])
+
+# Dispatches to the correct method based on file type
+def EXTRACT_TEXT_FROM_FILE(FILE_PATH):
+    MIME_TYPE, _ = mimetypes.guess_type(FILE_PATH)
+
+    if MIME_TYPE:
+        if MIME_TYPE.startswith("image"):
+            return OCR_IMAGE(FILE_PATH)
+        elif MIME_TYPE == "application/pdf":
+            return OCR_PDF(FILE_PATH)
+        elif MIME_TYPE == "text/plain":
+            return READ_TEXT_FILE(FILE_PATH)
+        elif MIME_TYPE == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            return READ_DOCX_FILE(FILE_PATH)
+
+    raise ValueError(f"Unsupported file type for path: {FILE_PATH}")
 
 # --------------- OCR FUNCTIONS --------------- #
 
