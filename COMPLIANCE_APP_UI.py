@@ -91,23 +91,35 @@ if st.button("✅ Verify Documents ✅"):
             else:
                 st.success("Comparison Complete ✅")
                 st.subheader("🎓 Education Verification 🎓")
-                
+
                 for IDX, RESULT in enumerate(MATCHES["education"], 1):
                     APP_ENTRY = RESULT["application_entry"]
                     AMA_ENTRY = RESULT.get("matched_ama_entry", {})
 
-                    st.markdown(f"### 🎓 Entry #{IDX}")
-                    st.markdown(f"**Program:** {APP_ENTRY['Program']}")
-                    st.markdown(f"**Specialty:** {APP_ENTRY['Specialty']}")
-                    st.markdown(f"**Start Date:** {APP_ENTRY['Start Date']}")
-                    st.markdown(f"**End Date:** {APP_ENTRY['End Date']}")
+                    st.markdown(f"### 🎓 Entry #{IDX} - Education Verification")
+
+                    st.markdown("**Compliance Application Entry:**")
+                    st.markdown(f"- Program: {APP_ENTRY['Program']}")
+                    st.markdown(f"- Specialty: {APP_ENTRY['Specialty']}")
+                    st.markdown(f"- Start Date: {APP_ENTRY['Start Date']}")
+                    st.markdown(f"- End Date: {APP_ENTRY['End Date']}")
+
+                    st.markdown("**AMA Profile Entry:**")
+                    if AMA_ENTRY:
+                        st.markdown(f"- Institution: {AMA_ENTRY.get('Institution', '')}")
+                        st.markdown(f"- Program: {AMA_ENTRY.get('Program', '')}")
+                        st.markdown(f"- Specialty: {AMA_ENTRY.get('Specialty', '')}")
+                        st.markdown(f"- Start Date: {AMA_ENTRY.get('Start Date', '')}")
+                        st.markdown(f"- End Date: {AMA_ENTRY.get('End Date', '')}")
+                    else:
+                        st.markdown("- No AMA entry found")
 
                     if RESULT["match"]:
-                        st.success("✅ Match found in AMA profile")
+                        st.success("✅ Match found")
                         st.info(f"ℹ️ Explanation: {RESULT.get('explanation', 'Exact match found.')}")
                     else:
-                        st.error("❌ No matching AMA record found")
-                        st.warning(f"⚠️ Explanation: {RESULT.get('explanation', 'No entry in AMA profile matches this program.')}")
+                        st.error("❌ No match found")
+                        st.warning(f"⚠️ Explanation: {RESULT.get('explanation', 'Application entry did not match any AMA entry.')}")
 
             if MATCHES["boards"]:
                 st.subheader("📋 Board Certification Verification 📋")
