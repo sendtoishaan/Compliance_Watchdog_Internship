@@ -5,4 +5,6 @@ Description: AI model for validating and verifying medical compliance applicatio
 
 Programming Language: Python
 
-Libraries and Technologies used: pytesseract, pdf2image, PIL, fuzzywuzzy, streamlit, tempfile etc.
+Requirements.txt includes all the libraries and tools used for this medical compliance checker.
+
+UI: streamlit
