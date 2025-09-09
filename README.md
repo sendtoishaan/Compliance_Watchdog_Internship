@@ -5,6 +5,6 @@ Description: AI model for validating and verifying medical compliance applicatio
 
 Programming Language: Python
 
-Requirements.txt includes all the libraries and tools used for this medical compliance checker.
+Libraries/Tools.txt includes all the libraries and tools used for this medical compliance checker.
 
 UI: streamlit
