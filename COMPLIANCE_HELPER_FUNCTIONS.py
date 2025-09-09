@@ -1,19 +1,15 @@
 import pytesseract
 import mimetypes
 import datetime
-from openai import OpenAI
 import docx
 import re
-import os
 from PIL import Image
-from dotenv import load_dotenv
 from pdf2image import convert_from_path
+from transformers import pipeline
 from sentence_transformers import SentenceTransformer, util
 
-load_dotenv() # Loads the variables from .env file
-
-# OPENAI API KEY
-OPENAI_CLIENT = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Hugging Face LLM pipeline
+LLM_PIPELINE = pipeline("text2text-generation", model="google/flan-t5-base")
 
 # Load/Initialize embedding model globally
 EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
@@ -28,39 +24,39 @@ def NORMALIZE_DATE(DATE_STR):
         return DATE_STR
 
 # Toggle between RULE_BASED and LLM explanations
-USE_LLM_EXPLANATIONS = False
+USE_LLM_EXPLANATIONS = True
 
 # Generates an explanation for comparison results
 def GENERATE_EXPLANATION(SECTION, APP_ENTRY, AMA_ENTRY, MATCH):
     SECTION = SECTION.strip()
-    APP_ENTRY = str(APP_ENTRY).strip()
-    AMA_ENTRY = str(AMA_ENTRY).strip()
-    
-    if USE_LLM_EXPLANATIONS:
-        PROMPT = f"""
-        Compare the following two {SECTION} entries and explain whether they match:
-        Application: {APP_ENTRY}
-        AMA: {AMA_ENTRY}
-        Match status: {MATCH}
-        """
-        try:
-            RESPONSE = OPENAI_CLIENT.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a compliance auditor providing clear justifications."},
-                    {"role": "user", "content": PROMPT}
-                ]
-            )
-            return RESPONSE.choices[0].message["content"].strip()
-        
-        except Exception as e:
-            return f"EXPLANATION_ERROR: {str(e)}"
-    
-    else:
+    APP_ENTRY_STR = str(APP_ENTRY).strip()
+    AMA_ENTRY_STR = str(AMA_ENTRY).strip() if AMA_ENTRY else "No AMA entry found"
+
+    if not USE_LLM_EXPLANATIONS:
         if MATCH:
-            return f"Both {SECTION} entries align."
+            return f"Both entries align. Application entry: {APP_ENTRY_STR} AMA entry: {AMA_ENTRY_STR}"
         else:
-            return f"Discrepancy found in {SECTION}: Application lists {APP_ENTRY}, AMA lists {AMA_ENTRY}."
+            return f"Discrepancy: Application entry: {APP_ENTRY_STR} AMA entry: {AMA_ENTRY_STR}"
+
+    if not AMA_ENTRY:
+        return "No matching AMA entry found."
+
+    PROMPT = f"""
+    You are a compliance auditor. Compare the following two {SECTION} entries.
+
+    Application entry: {APP_ENTRY_STR}
+    AMA entry: {AMA_ENTRY_STR}
+
+    Explain concisely whether they match. If they do not match, clearly describe the differences (e.g., program name, specialty, dates, board name, status). 
+    Respond in 1–3 sentences only. Do NOT repeat text or add unrelated information.
+    """
+
+    try:
+        RESULT = LLM_PIPELINE(PROMPT, max_length=100, do_sample=False)
+        return RESULT[0]["generated_text"].strip()
+
+    except Exception as e:
+        return f"EXPLANATION_ERROR: {str(e)}"
 
 # --------------- FILE-TYPE FUNCTIONS --------------- #
 
@@ -172,7 +168,17 @@ def EXTRACT_EDUCATION_AMA_PROFILE(FILE_CONTENT):
     try:
         ENTRIES = []
 
-        BLOCKS = re.findall(r'Sponsoring Institution:\s*(.*?)\n.*?Program name:\s*(.*?)\nSpecialty:\s*(.*?)\n.*?Dates:\s*(\d{2}/\d{2}/\d{4}) - (\d{2}/\d{2}/\d{4})', FILE_CONTENT, re.DOTALL | re.IGNORECASE)
+        BLOCKS = re.findall(
+            r'Sponsoring Institution:\s*(.*?)\n'  
+            r'(?:.*\n)*?'
+            r'Program name:\s*(.*?)\n'
+            r'(?:.*\n)*?'
+            r'Specialty:\s*(.*?)\n'
+            r'(?:.*\n)*?'
+            r'Dates:\s*(\d{2}/\d{2}/\d{4})\s*-\s*(\d{2}/\d{2}/\d{4})',
+            FILE_CONTENT, 
+            re.IGNORECASE
+        )
 
         for institution, program, specialty, start_date, end_date in BLOCKS:
             ENTRIES.append({
@@ -268,32 +274,44 @@ def COMPARE_INFORMATION(APPLICATION_EDU_DATA=None, AMA_EDU_DATA=None, APPLICATIO
         }
 
         # --- EDUCATION COMPARISON ---
+        if AMA_EDU_DATA:
+            MAIN_AMA_ENTRY = next((e for e in AMA_EDU_DATA if "Institution" in e and e["Institution"]), AMA_EDU_DATA[0])
+        else:
+            MAIN_AMA_ENTRY = None
+
         for APP_ENTRY in APPLICATION_EDU_DATA or []:
-            BEST_MATCH = None
-            BEST_SCORE = 0
+            if not MAIN_AMA_ENTRY:
+                RESULTS["education"].append({
+                    "application_entry": APP_ENTRY,
+                    "matched_ama_entry": None,
+                    "match": False,
+                    "explanation": "No AMA education entries available for comparison.",
+                    "similarity_score": 0.0
+                })
+                continue
 
-            for AMA_ENTRY in AMA_EDU_DATA or []:
-                PROGRAM_SCORE = EMBEDDING_SIMILARITY(APP_ENTRY.get("Program", ""), AMA_ENTRY.get("Program", ""))
-                SPECIALTY_SCORE = EMBEDDING_SIMILARITY(APP_ENTRY.get("Specialty", ""), AMA_ENTRY.get("Specialty", ""))
-                AVERAGE_SCORE = (PROGRAM_SCORE * 0.4) + (SPECIALTY_SCORE * 0.6)
-
-                if AVERAGE_SCORE > BEST_SCORE:
-                    BEST_SCORE = AVERAGE_SCORE
-                    BEST_MATCH = AMA_ENTRY
-
-            MATCH_STATUS = BEST_SCORE >= threshold
+            PROGRAM_SCORE = EMBEDDING_SIMILARITY(APP_ENTRY.get("Program", ""), MAIN_AMA_ENTRY.get("Program", ""))
+            SPECIALTY_SCORE = EMBEDDING_SIMILARITY(APP_ENTRY.get("Specialty", ""), MAIN_AMA_ENTRY.get("Specialty", ""))
+            AVERAGE_SCORE = (PROGRAM_SCORE * 0.4) + (SPECIALTY_SCORE * 0.6)
+            MATCH_STATUS = AVERAGE_SCORE >= threshold
 
             RESULTS["education"].append({
                 "application_entry": APP_ENTRY,
-                "matched_ama_entry": BEST_MATCH,
+                "matched_ama_entry": MAIN_AMA_ENTRY,
                 "match": MATCH_STATUS,
-                "explanation": GENERATE_EXPLANATION("education", APP_ENTRY, BEST_MATCH if MATCH_STATUS else {}, MATCH_STATUS)
+                "similarity_score": AVERAGE_SCORE,
+                "explanation": GENERATE_EXPLANATION(
+                    "education",
+                    APP_ENTRY,
+                    MAIN_AMA_ENTRY,
+                    MATCH_STATUS
+                )
             })
 
         # --- BOARDS COMPARISON ---
         for APP_BOARD in APPLICATION_BOARD_DATA or []:
             MATCH_FOUND = False
-            EXPLANATION = "No matching AMA entry found."
+            EXPLANATION = None
 
             for AMA_BOARD in AMA_BOARD_DATA or []:
                 BOARD_SCORE = EMBEDDING_SIMILARITY(APP_BOARD.get("Board Name", ""), AMA_BOARD.get("Board Name", ""))
@@ -307,8 +325,11 @@ def COMPARE_INFORMATION(APPLICATION_EDU_DATA=None, AMA_EDU_DATA=None, APPLICATIO
                     MATCH_FOUND = True
                     EXPLANATION = GENERATE_EXPLANATION("board", APP_BOARD, AMA_BOARD, True)
                     break
-                else:
+                elif EXPLANATION is None:
                     EXPLANATION = GENERATE_EXPLANATION("board", APP_BOARD, AMA_BOARD, False)
+
+            if EXPLANATION is None:  
+                EXPLANATION = "No AMA board entries available for comparison."
 
             RESULTS["boards"].append({
                 "application_entry": APP_BOARD,

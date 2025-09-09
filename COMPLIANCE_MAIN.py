@@ -19,7 +19,7 @@ def RUN_VERIFICATION(COMPLIANCE_APPLICATION_PATH, AMA_PROFILE_PATH):
         print(f"📚 Entry #{i}")
         print(f"📝 Application: {result['application_entry']}")
         print(f"🎓 AMA Match: {result['matched_ama_entry']}")
-        print(f"✅ Match: {'Yes' if result['match'] else 'No'} (Score: {result['similarity_score']:.1f})")
+        print(f"✅ Match: {'Yes' if result['match'] else 'No'}")
         print("-" * 60)
 
 
