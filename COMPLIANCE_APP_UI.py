@@ -35,6 +35,61 @@ with COL2:
 
 with st.sidebar:
     st.header("Navigation")
+
+    # Radio menu for instructions and external portals
+    NAV_SELECTION = st.radio(
+        "Select an action:",
+        (
+            "ℹ️ About / Instructions",
+            "🌐 Open Compliance Application Portal",
+            "🌐 Lookup AMA Profile Online",
+        )
+    )
+
+    if NAV_SELECTION == "ℹ️ About / Instructions":
+        st.subheader("📖 About The Medical Compliance Checker")
+        st.markdown(
+            """
+            The **Medical Compliance Checker** helps verify whether the information in your
+            medical compliance application matches the records in your AMA profile.
+
+            ### ✅ How to Use:
+            1. **Upload your documents**  
+               - Upload the **Compliance Application** (image, PDF, DOCX, or TXT).  
+               - Upload the **AMA Profile** (image, PDF, DOCX, or TXT).  
+
+            2. **Click 'Verify Documents'**  
+               - The app will extract text using OCR if needed.  
+               - It will parse **Education** and **Board Certification** sections.  
+
+            3. **View Results**  
+               - Each entry is compared with AMA data.  
+               - Matches are confirmed with ✅.  
+               - Discrepancies are flagged with ❌ along with explanations.  
+
+            ### 🔍 What to Expect:
+            - **OCR is used** for images/PDFs, so quality of scan may affect accuracy.  
+            - **LLM explanations** provide concise reasoning for discrepancies.  
+            - Both **Education** and **Board Certifications** are checked separately.  
+
+            ### ⚠️ Notes:
+            - Make sure uploaded files are **clear and readable**.  
+            - Some unmatched results may require **manual review**.  
+            """
+        )
+
+    elif NAV_SELECTION == "🌐 Open Compliance Application Portal":
+        st.markdown(
+            '[Click here to open Compliance Watchdog](https://app.compliancewatchdog.com/)',
+            unsafe_allow_html=True
+        )
+
+    elif NAV_SELECTION == "🌐 Lookup AMA Profile Online":
+        st.markdown(
+            '[Click here to open AMA profile lookup](https://www.ama-assn.org/member-center/ama-physician-masterfile)',
+            unsafe_allow_html=True
+        )
+
     if st.button("🚪 Exit Application 🚪"):
         st.warning("Medical Compliance Checker Closed")
         st.stop()
