@@ -7,9 +7,8 @@ Tools:
 5. re
 6. transformers
 7. PIL
-8. dotenv
-9. pdf2image
-10. sentence_transformers
-11. streamlit
-12. tempfile
-13. base64
+8. pdf2image
+9. sentence_transformers
+10. streamlit
+11. tempfile
+12. base64

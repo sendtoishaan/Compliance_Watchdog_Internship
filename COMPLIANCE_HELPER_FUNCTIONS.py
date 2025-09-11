@@ -16,12 +16,18 @@ EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Normalizes expiration date strings into a standard date object
 def NORMALIZE_DATE(DATE_STR):
-    try:
-        CLEANED = DATE_STR.strip().replace("-", "/")
-        return datetime.datetime.strptime(CLEANED, "%m/%d/%Y").date()
-    
-    except Exception:
-        return DATE_STR
+    DATE_STR = str(DATE_STR).strip()
+    DATE_STR = DATE_STR.replace("-", "/")
+    FORMATS = ["%m/%d/%Y", "%m/%d/%y", "%Y/%m/%d", "%m/%d/%Y", "%m/%d/%y"]
+
+    for FMT in FORMATS:
+        try:
+            return datetime.datetime.strptime(DATE_STR, FMT).date()
+        
+        except Exception:
+            continue
+
+    return DATE_STR
 
 # Toggle between RULE_BASED and LLM explanations
 USE_LLM_EXPLANATIONS = True
@@ -104,7 +110,8 @@ def EXTRACT_TEXT_FROM_FILE(FILE_PATH):
 def OCR_IMAGE(IMAGE_PATH):
     try:
         IMAGE = Image.open(IMAGE_PATH)
-        return pytesseract.image_to_string(IMAGE)
+        text = pytesseract.image_to_string(IMAGE)
+        return text if text.strip() else "OCR_EMPTY"
     
     except Exception as e:
         return f"OCR_ERROR: {str(e)}"
@@ -115,11 +122,12 @@ def OCR_PDF(PDF_PATH):
         PDF_PAGES = convert_from_path(PDF_PATH, dpi=300)
         PDF_CONTENT = ""
         for PAGE in PDF_PAGES:
-            PDF_CONTENT += pytesseract.image_to_string(PAGE) + "\n"
+            PAGE_TEXT = pytesseract.image_to_string(PAGE)
+            PDF_CONTENT += PAGE_TEXT.strip() + "\n" if PAGE_TEXT.strip() else "OCR_EMPTY\n"
         return PDF_CONTENT
     
-    except Exception as E:
-        return f"OCR_ERROR: {str(E)}"
+    except Exception as e:
+        return f"OCR_ERROR: {str(e)}"
 
 # --------------- PARSING FUNCTIONS --------------- #
 
@@ -198,23 +206,16 @@ def EXTRACT_EDUCATION_AMA_PROFILE(FILE_CONTENT):
 def EXTRACT_BOARDS_COMPLIANCE_APPLICATION(FILE_CONTENT):
     try:
         ENTRIES = []
-
+        FILE_CONTENT = re.sub(r'\r\n|\r', '\n', FILE_CONTENT)
+        FILE_CONTENT = re.sub(r'\n+', '\n', FILE_CONTENT)
         BLOCKS = re.split(r'Board Status\s*:\s*', FILE_CONTENT, flags=re.IGNORECASE)
 
         for BLOCK in BLOCKS[1:]:
-            LINES = BLOCK.strip().splitlines()
-
-            BOARD_NAME = ""
-            for LINE in reversed(LINES):
-                CLEAN_LINE = LINE.strip()
-                if CLEAN_LINE and ':' not in CLEAN_LINE and not CLEAN_LINE.lower().startswith("board status"):
-                    BOARD_NAME = CLEAN_LINE
-                    break
-
-            STATUS_MATCH = re.search(r'^(Active|Inactive)', BLOCK.strip(), re.IGNORECASE)
+            LINES = [line.strip() for line in BLOCK.strip().splitlines() if line.strip()]
+            BOARD_NAME = next((line for line in reversed(LINES) if ':' not in line and not line.lower().startswith("board status")), None)
+            STATUS_MATCH = re.search(r'(Active|Inactive)', BLOCK, re.IGNORECASE)
             STATUS = STATUS_MATCH.group(1).strip() if STATUS_MATCH else None
-
-            EXP_MATCH = re.search(r'Expiration\s*Date\s*:\s*(\d{2}[-/]\d{2}[-/]\d{4})', BLOCK, re.IGNORECASE)
+            EXP_MATCH = re.search(r'Expiration\s*Date\s*[:\-\s]*([\d]{2}[/\-][\d]{2}[/\-][\d]{4})', BLOCK, re.IGNORECASE)
             EXPIRATION = EXP_MATCH.group(1).strip() if EXP_MATCH else None
 
             if BOARD_NAME and STATUS and EXPIRATION:
@@ -225,7 +226,7 @@ def EXTRACT_BOARDS_COMPLIANCE_APPLICATION(FILE_CONTENT):
                 })
 
         return ENTRIES
-    
+
     except Exception:
         return []
 
@@ -233,23 +234,28 @@ def EXTRACT_BOARDS_COMPLIANCE_APPLICATION(FILE_CONTENT):
 def EXTRACT_BOARDS_AMA_PROFILE(FILE_CONTENT):
     try:
         ENTRIES = []
-
-        MATCH = re.search(r'Certifying board:\s*(.*?)\nCertificate:\s*(.*?)\nCertificate type:.*?\n\nDuration Status\s*(.*?)\s+(\d{2}/\d{2}/\d{4})', FILE_CONTENT, re.DOTALL | re.IGNORECASE)
-
-        if MATCH:
-            BOARD_NAME = MATCH.group(1).strip()
-            CERT = MATCH.group(2).strip()
-            STATUS = MATCH.group(3).strip()
-            EXPIRATION = MATCH.group(4).strip()
-
-            ENTRIES.append({
-                "Board Name": f"{BOARD_NAME} - {CERT}",
-                "Status": STATUS,
-                "Expiration Date": EXPIRATION
-            })
-
+        FILE_CONTENT = re.sub(r'\r\n|\r', '\n', FILE_CONTENT)
+        FILE_CONTENT = re.sub(r'\n+', '\n', FILE_CONTENT)
+        BOARD_BLOCKS = re.split(r'Certifying\s*board\s*[:\-]?', FILE_CONTENT, flags=re.IGNORECASE)[1:]
+        
+        for BLOCK in BOARD_BLOCKS:
+            BOARD_NAME_MATCH = re.search(r'^(.*?)\n', BLOCK)
+            CERT_MATCH = re.search(r'Certificate\s*[:\-]?\s*(.*?)\n', BLOCK, re.IGNORECASE)
+            STATUS_MATCH = re.search(r'Duration\s*Status\s*[:\-]?\s*(.*?)\n', BLOCK, re.IGNORECASE)
+            EXP_MATCH = re.search(r'(\d{2}/\d{2}/\d{4})', BLOCK)
+            
+            if BOARD_NAME_MATCH and CERT_MATCH and STATUS_MATCH and EXP_MATCH:
+                BOARD_NAME = f"{BOARD_NAME_MATCH.group(1).strip()} - {CERT_MATCH.group(1).strip()}"
+                STATUS = STATUS_MATCH.group(1).strip()
+                EXPIRATION = EXP_MATCH.group(1).strip()
+                ENTRIES.append({
+                    "Board Name": BOARD_NAME,
+                    "Status": STATUS,
+                    "Expiration Date": EXPIRATION
+                })
+            
         return ENTRIES
-    
+
     except Exception:
         return []
 
@@ -314,12 +320,22 @@ def COMPARE_INFORMATION(APPLICATION_EDU_DATA=None, AMA_EDU_DATA=None, APPLICATIO
             EXPLANATION = None
 
             for AMA_BOARD in AMA_BOARD_DATA or []:
-                BOARD_SCORE = EMBEDDING_SIMILARITY(APP_BOARD.get("Board Name", ""), AMA_BOARD.get("Board Name", ""))
-                STATUS_MATCH = APP_BOARD.get("Status", "").lower() == AMA_BOARD.get("Status", "").lower()
+                BOARD_SCORE = EMBEDDING_SIMILARITY(
+                    (APP_BOARD.get("Board Name", "") or "").strip().lower(),
+                    (AMA_BOARD.get("Board Name", "") or "").strip().lower()
+                )
+                STATUS_MATCH = (APP_BOARD.get("Status", "") or "").strip().lower() == (AMA_BOARD.get("Status", "") or "").strip().lower()
 
-                APP_DATE = NORMALIZE_DATE(APP_BOARD.get("Expiration Date", ""))
-                AMA_DATE = NORMALIZE_DATE(AMA_BOARD.get("Expiration Date", ""))
-                DATE_MATCH = APP_DATE == AMA_DATE
+                APP_DATE_STR = str(APP_BOARD.get("Expiration Date", "")).strip()
+                AMA_DATE_STR = str(AMA_BOARD.get("Expiration Date", "")).strip()
+                APP_DATE = NORMALIZE_DATE(APP_DATE_STR)
+                AMA_DATE = NORMALIZE_DATE(AMA_DATE_STR)
+                DATE_MATCH = False
+                try:
+                    DATE_MATCH = APP_DATE == AMA_DATE
+                
+                except Exception:
+                    DATE_MATCH = False
 
                 if BOARD_SCORE >= threshold and STATUS_MATCH and DATE_MATCH:
                     MATCH_FOUND = True
