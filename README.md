@@ -7,4 +7,6 @@ Programming Language: Python
 
 Tools.txt includes all the libraries and tools used for this medical compliance checker.
 
+Requirements.txt and Packages.txt outlines all the necessary installments and downloads in order for the app to work properly.
+
 UI: streamlit
